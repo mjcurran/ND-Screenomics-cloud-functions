@@ -3,12 +3,12 @@ Cloud function to decrypt images as they are saved and copy them to a different 
 * update original HTTP POST function to store to second bucket, add trigger function on that
 bucket to decrypt in place.
 
-gcloud functions deploy test-copy-func \
+gcloud functions deploy copy-func \
 --gen2 \
 --runtime=python310 \
 --region=us-central1 \
 --source=. \
---entry-point=test_decrypt_and_move \
+--entry-point=decrypt_and_move \
 --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
 --trigger-event-filters="bucket=staged-screenomics"
 
@@ -34,22 +34,25 @@ key_bucket = client.get_bucket(KEY_BUCKET_NAME)
 def decrypt_image(file, key):
     fileparts = file.split('/')
     filename = fileparts[1]
-    h = hashlib.sha256(filename.encode())
-    newiv = bytes.fromhex(h.hexdigest())
-    iv = newiv[:7]
-    bytekey = bytes.fromhex(key)
-    cipher = AES.new(bytekey, AES.MODE_GCM, nonce=iv)
-    blob = src_bucket.blob(file)
-    with blob.open("rb") as f:
-        contents = f.read()
-    decrypted_data = cipher.decrypt(contents)
     new_blob = dst_bucket.blob(file)
-    with new_blob.open("wb") as w:
-        w.write(decrypted_data)
+    if not new_blob.exists():
+        h = hashlib.sha256(filename.encode())
+        newiv = bytes.fromhex(h.hexdigest())
+        iv = newiv[:7]
+        bytekey = bytes.fromhex(key)
+        cipher = AES.new(bytekey, AES.MODE_GCM, nonce=iv)
+        blob = src_bucket.blob(file)
+        with blob.open("rb") as f:
+            contents = f.read()
+        decrypted_data = cipher.decrypt(contents)
+        new_blob = dst_bucket.blob(file)
+        with new_blob.open("wb") as w:
+            w.write(decrypted_data)
+        blob.delete()
 
 # Triggered by a change in a storage bucket
 @functions_framework.cloud_event
-def test_decrypt_and_move(cloud_event):
+def decrypt_and_move(cloud_event):
     data = cloud_event.data
 
     event_id = cloud_event["id"]

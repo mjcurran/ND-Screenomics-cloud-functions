@@ -4,37 +4,43 @@ import os
 import asyncio
 
 PROJECT_ID = ""
-BUCKET_NAME = ""
+BUCKET_NAME = "notre-dame-screenomics"
+SECOND_BUCKET_NAME = "staged-screenomics"
 
 NUM_FILES = 1000
 client = storage.Client(project=PROJECT_ID)
 bucket = client.get_bucket(BUCKET_NAME)
+second_bucket = client.get_bucket(SECOND_BUCKET_NAME)
 
 
-def gbucket_upload(file_object, destination_blob_name, bucket):
+def gbucket_upload(file_object, destination_blob_name, bucket, second_bucket):
     """Uploads a file to the bucket."""
     destination_blob_name = list(destination_blob_name)
     destination_blob_name[8] = "/"
     destination_blob_name = "".join(destination_blob_name)
     blob = bucket.blob(destination_blob_name)
     public_url = blob.upload_from_file(file_object)
+    #blob2 = second_bucket.blob(destination_blob_name)
+    #other_url = blob2.upload_from_file(file_object)
+    src_blob = bucket.blob(destination_blob_name)
+    new_blob = bucket.copy_blob(src_blob, second_bucket, src_blob.name)
     return public_url
 
 
-async def upload_file_to_bucket(file, filename, bucket):
+async def upload_file_to_bucket(file, filename, bucket, second_bucket):
     """Wrapper for running program in an asynchronous manner"""
     loop = asyncio.get_event_loop()
     # save the file locally in the /tmp/filename
     file.save("/tmp/" + filename)
     try:
         # take the file from the local folder then upload it
-        await loop.run_in_executor(None, gbucket_upload, open("/tmp/" + filename, 'rb'), filename, bucket)
+        await loop.run_in_executor(None, gbucket_upload, open("/tmp/" + filename, 'rb'), filename, bucket, second_bucket)
     except Exception as e:
         print(f"Exception occured: {e}")
 
 
 async def upload_files_to_bucket(files, filenames):
-    await asyncio.gather(*[upload_file_to_bucket(file, filename, bucket) for file, filename in
+    await asyncio.gather(*[upload_file_to_bucket(file, filename, bucket, second_bucket) for file, filename in
                         zip(files, filenames)])
 
 def count_files_with_name(user):
